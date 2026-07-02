@@ -3,27 +3,31 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { randomUUID } from "node:crypto";
 
+const DATA_DIR = process.env.DATA_DIR || "/app/data";
 const ACCOUNTS_FILE =
-  process.env.MERLIN_ACCOUNTS_FILE || join(process.env.DATA_DIR || "/app/data", "merlin-accounts.json");
+  process.env.MERLIN_ACCOUNTS_FILE || join(DATA_DIR, "merlin-accounts.json");
+const PROXIES_FILE = join(DATA_DIR, "merlin-proxies.json");
+const CRED_FILE = join(DATA_DIR, "merlin-credentials.json");
 const FB_KEY = process.env.FIREBASE_API_KEY || "";
 const FB_IDENTITY = "https://identitytoolkit.googleapis.com/v1/accounts";
-const FB_TOKEN = "https://securetoken.googleapis.com/v1/token";
 
-function loadAccounts() {
+function loadFile(path) {
   try {
-    if (!existsSync(ACCOUNTS_FILE)) return [];
-    const raw = readFileSync(ACCOUNTS_FILE, "utf8");
-    const arr = JSON.parse(raw);
-    return Array.isArray(arr) ? arr : [];
-  } catch {
-    return [];
-  }
+    if (!existsSync(path)) return [];
+    return JSON.parse(readFileSync(path, "utf8"));
+  } catch { return []; }
+}
+function saveFile(path, data) {
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, JSON.stringify(data, null, 2));
 }
 
-function saveAccounts(accounts) {
-  mkdirSync(dirname(ACCOUNTS_FILE), { recursive: true });
-  writeFileSync(ACCOUNTS_FILE, JSON.stringify(accounts, null, 2));
-}
+function loadAccounts() { return loadFile(ACCOUNTS_FILE); }
+function saveAccounts(data) { saveFile(ACCOUNTS_FILE, data); }
+function loadProxies() { return loadFile(PROXIES_FILE); }
+function saveProxies(data) { saveFile(PROXIES_FILE, data); }
+function loadCreds() { return loadFile(CRED_FILE); }
+function saveCreds(data) { saveFile(CRED_FILE, data); }
 
 async function firebaseSignup(email, password) {
   const res = await fetch(`${FB_IDENTITY}:signUp?key=${FB_KEY}`, {
@@ -71,15 +75,44 @@ function genPassword() {
   return `Fl${pw}!9`;
 }
 
-export async function GET() {
+export async function GET(request) {
   try {
+    const { searchParams } = new URL(request.url);
+    const what = searchParams.get("type") || "accounts";
+
+    if (what === "proxies") {
+      return NextResponse.json({ proxies: loadProxies() });
+    }
+
+    if (what === "export") {
+      const creds = loadCreds();
+      const lines = ["email,password,chatId,proxy"];
+      for (const c of creds) {
+        lines.push([c.email || "", c.password || "", c.chatId || "", c.proxy || ""].join(","));
+      }
+      return new NextResponse(lines.join("\n"), {
+        status: 200,
+        headers: {
+          "Content-Type": "text/csv",
+          "Content-Disposition": 'attachment; filename="merlin-accounts.csv"',
+        },
+      });
+    }
+
     const accounts = loadAccounts().map((a, i) => ({
       index: i,
       chatId: a.chatId || "",
       proxy: a.proxy || "",
       hasRefresh: !!a.refreshToken,
     }));
-    return NextResponse.json({ accounts, file: ACCOUNTS_FILE, firebaseKey: !!FB_KEY });
+    const creds = loadCreds();
+    return NextResponse.json({
+      accounts,
+      creds,
+      proxies: loadProxies(),
+      file: ACCOUNTS_FILE,
+      firebaseKey: !!FB_KEY,
+    });
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
@@ -94,22 +127,59 @@ export async function POST(request) {
       if (!FB_KEY) return NextResponse.json({ error: "FIREBASE_API_KEY not set" }, { status: 400 });
       const newEmail = email || genEmail();
       const newPass = password || genPassword();
+      let proxyToUse = proxy || "";
+      if (!proxyToUse) {
+        const proxies = loadProxies();
+        if (proxies.length > 0) proxyToUse = proxies[Math.floor(Math.random() * proxies.length)];
+      }
       const rt = await firebaseSignup(newEmail, newPass);
-      const account = { refreshToken: rt, chatId: randomUUID(), proxy: proxy || "" };
+      const account = { refreshToken: rt, chatId: randomUUID(), proxy: proxyToUse };
       const accounts = loadAccounts();
       accounts.push(account);
       saveAccounts(accounts);
-      return NextResponse.json({ ok: true, email: newEmail, password: newPass, total: accounts.length }, { status: 201 });
+      const creds = loadCreds();
+      creds.push({ email: newEmail, password: newPass, chatId: account.chatId, proxy: proxyToUse });
+      saveCreds(creds);
+      return NextResponse.json({ ok: true, email: newEmail, password: newPass, proxy: proxyToUse, total: accounts.length }, { status: 201 });
     }
 
     if (action === "add") {
       if (!FB_KEY) return NextResponse.json({ error: "FIREBASE_API_KEY not set" }, { status: 400 });
       const rt = await getRefreshToken({ email, password, refreshToken, signup: body.signup });
-      const account = { refreshToken: rt, chatId: randomUUID(), proxy: proxy || "" };
+      const proxyToUse = proxy || "";
+      const account = { refreshToken: rt, chatId: randomUUID(), proxy: proxyToUse };
       const accounts = loadAccounts();
       accounts.push(account);
       saveAccounts(accounts);
+      const creds = loadCreds();
+      creds.push({ email: email || "(refresh)", password: password || "", chatId: account.chatId, proxy: proxyToUse });
+      saveCreds(creds);
       return NextResponse.json({ ok: true, total: accounts.length }, { status: 201 });
+    }
+
+    if (action === "add-proxy") {
+      if (!body.proxyUrl) return NextResponse.json({ error: "proxyUrl required" }, { status: 400 });
+      const proxies = loadProxies();
+      if (!proxies.includes(body.proxyUrl)) proxies.push(body.proxyUrl);
+      saveProxies(proxies);
+      return NextResponse.json({ ok: true, total: proxies.length }, { status: 201 });
+    }
+
+    if (action === "import-proxies") {
+      if (!body.text) return NextResponse.json({ error: "text required" }, { status: 400 });
+      const newProxies = body.text.split("\n").map((l) => l.trim()).filter((l) => l && !l.startsWith("#"));
+      const proxies = loadProxies();
+      for (const p of newProxies) { if (!proxies.includes(p)) proxies.push(p); }
+      saveProxies(proxies);
+      return NextResponse.json({ ok: true, added: newProxies.length, total: proxies.length }, { status: 201 });
+    }
+
+    if (action === "set-email-prefix") {
+      const file = join(DATA_DIR, "merlin-farm-config.json");
+      const config = loadFile(file);
+      config.emailPrefix = body.prefix || "";
+      saveFile(file, config);
+      return NextResponse.json({ ok: true });
     }
 
     return NextResponse.json({ error: "unknown action" }, { status: 400 });
@@ -121,7 +191,22 @@ export async function POST(request) {
 export async function DELETE(request) {
   try {
     const { searchParams } = new URL(request.url);
+    const what = searchParams.get("type") || "accounts";
     const idx = parseInt(searchParams.get("index") || "-1", 10);
+
+    if (what === "proxies") {
+      if (idx < 0) return NextResponse.json({ error: "invalid index" }, { status: 400 });
+      const proxies = loadProxies();
+      proxies.splice(idx, 1);
+      saveProxies(proxies);
+      return NextResponse.json({ ok: true, total: proxies.length });
+    }
+
+    if (what === "credentials") {
+      saveCreds([]);
+      return NextResponse.json({ ok: true });
+    }
+
     const accounts = loadAccounts();
     if (idx < 0 || idx >= accounts.length) {
       return NextResponse.json({ error: "invalid index" }, { status: 400 });
