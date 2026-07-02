@@ -96,7 +96,7 @@ function normalizeAcc(a) {
 }
 
 function parseAccounts() {
-  const filePath = process.env.MERLIN_ACCOUNTS_FILE;
+  const filePath = process.env.MERLIN_ACCOUNTS_FILE || (process.env.DATA_DIR ? `${process.env.DATA_DIR}/merlin-accounts.json` : null);
   if (filePath) {
     try {
       const arr = JSON.parse(readFileSync(filePath, "utf8"));
