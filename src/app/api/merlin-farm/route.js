@@ -38,6 +38,46 @@ function saveProxies(data) { saveFile(PROXIES_FILE, data); }
 function loadCreds() { return loadFile(CRED_FILE); }
 function saveCreds(data) { saveFile(CRED_FILE, data); }
 
+async function createDbConnection(key, email) {
+  try {
+    const { getAdapter } = await import("@/lib/db/driver");
+    const db = getAdapter();
+    const now = new Date().toISOString();
+    const id = randomUUID();
+    const data = JSON.stringify({
+      defaultModel: "gpt-4o-mini",
+      apiKey: key,
+      testStatus: "active",
+      displayName: email || key.slice(0, 8),
+    });
+    db.run(
+      `INSERT OR IGNORE INTO providerConnections(id, provider, authType, name, email, priority, isActive, data, createdAt, updatedAt)
+       VALUES(?, 'merlin', 'apikey', ?, ?, 0, 1, ?, ?, ?)`,
+      [id, email || key.slice(0, 12), email || "", data, now, now]
+    );
+  } catch (e) {
+    console.error("[merlin-farm] DB insert failed:", e.message);
+  }
+}
+
+function loadFile(path) {
+  try {
+    if (!existsSync(path)) return [];
+    return JSON.parse(readFileSync(path, "utf8"));
+  } catch { return []; }
+}
+function saveFile(path, data) {
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, JSON.stringify(data, null, 2));
+}
+
+function loadAccounts() { return loadFile(ACCOUNTS_FILE); }
+function saveAccounts(data) { saveFile(ACCOUNTS_FILE, data); }
+function loadProxies() { return loadFile(PROXIES_FILE); }
+function saveProxies(data) { saveFile(PROXIES_FILE, data); }
+function loadCreds() { return loadFile(CRED_FILE); }
+function saveCreds(data) { saveFile(CRED_FILE, data); }
+
 async function firebaseSignup(email, password) {
   const res = await fetch(`${FB_IDENTITY}:signUp?key=${FB_KEY}`, {
     method: "POST",
@@ -151,6 +191,7 @@ export async function POST(request) {
       const creds = loadCreds();
       creds.push({ email: newEmail, password: newPass, chatId: account.chatId, proxy: proxyToUse, key });
       saveCreds(creds);
+      createDbConnection(key, newEmail);
       return NextResponse.json({ ok: true, email: newEmail, password: newPass, proxy: proxyToUse, key, total: accounts.length }, { status: 201 });
     }
 

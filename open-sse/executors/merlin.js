@@ -293,7 +293,7 @@ export class MerlinExecutor extends BaseExecutor {
     super("merlin", { noAuth: true });
   }
 
-  async execute({ model, body, stream, signal, log }) {
+  async execute({ model, body, stream, credentials, signal, log }) {
     const messages = body?.messages;
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return {
@@ -352,6 +352,19 @@ export class MerlinExecutor extends BaseExecutor {
 
     const startIdx = poolCursor;
     let lastErr;
+
+    const apiKey = credentials?.apiKey;
+    const pinned = apiKey ? accounts.find((a) => a.key === apiKey) : null;
+
+    if (pinned) {
+      try {
+        const result = await this._callAccount(pinned, content, merlinModel, model, stream, signal, log);
+        return result;
+      } catch (err) {
+        log?.error?.("MERLIN", `Pinned account failed: ${err.message}`);
+      }
+    }
+
     for (let i = 0; i < accounts.length; i++) {
       const acc = accounts[(startIdx + i) % accounts.length];
       try {
