@@ -119,6 +119,7 @@ import p116 from "./xiaomi-mimo.js";
 import p117 from "./xiaomi-tokenplan.js";
 import p118 from "./youcom.js";
 import p119 from "./zcode.js";
+import p120 from "./merlin.js";
 export default [
   p0,
   p1,
@@ -240,4 +241,5 @@ export default [
   p117,
   p118,
   p119,
+  p120,
 ];

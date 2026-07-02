@@ -19,6 +19,7 @@ import { XiaomiTokenplanExecutor } from "./xiaomi-tokenplan.js";
 import { MimoFreeExecutor } from "./mimo-free.js";
 import { ZcodeExecutor } from "./zcode.js";
 import { CodeBuddyExecutor } from "./codebuddy-cn.js";
+import { MerlinExecutor } from "./merlin.js";
 import { DefaultExecutor } from "./default.js";
 
 const executors = {
@@ -47,6 +48,7 @@ const executors = {
   zcode: new ZcodeExecutor(),
   zc: new ZcodeExecutor(), // Alias for zcode
   "codebuddy-cn": new CodeBuddyExecutor(),
+  merlin: new MerlinExecutor(),
 };
 
 const defaultCache = new Map();
@@ -84,3 +86,4 @@ export { XiaomiTokenplanExecutor } from "./xiaomi-tokenplan.js";
 export { MimoFreeExecutor } from "./mimo-free.js";
 export { ZcodeExecutor } from "./zcode.js";
 export { CodeBuddyExecutor } from "./codebuddy-cn.js";
+export { MerlinExecutor } from "./merlin.js";

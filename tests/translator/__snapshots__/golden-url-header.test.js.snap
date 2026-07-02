@@ -9,10 +9,10 @@ exports[`GOLDEN buildHeaders (default executor providers) > agentrouter → head
     "Content-Type": "application/json",
     "User-Agent": "claude-cli/2.1.195 (external, cli)",
     "X-App": "cli",
-    "X-Stainless-Arch": "x64",
+    "X-Stainless-Arch": "arm64",
     "X-Stainless-Helper-Method": "stream",
     "X-Stainless-Lang": "js",
-    "X-Stainless-Os": "Linux",
+    "X-Stainless-Os": "MacOS",
     "X-Stainless-Package-Version": "0.94.0",
     "X-Stainless-Retry-Count": "0",
     "X-Stainless-Runtime": "node",
@@ -27,10 +27,10 @@ exports[`GOLDEN buildHeaders (default executor providers) > agentrouter → head
     "Content-Type": "application/json",
     "User-Agent": "claude-cli/2.1.195 (external, cli)",
     "X-App": "cli",
-    "X-Stainless-Arch": "x64",
+    "X-Stainless-Arch": "arm64",
     "X-Stainless-Helper-Method": "stream",
     "X-Stainless-Lang": "js",
-    "X-Stainless-Os": "Linux",
+    "X-Stainless-Os": "MacOS",
     "X-Stainless-Package-Version": "0.94.0",
     "X-Stainless-Retry-Count": "0",
     "X-Stainless-Runtime": "node",
@@ -352,8 +352,8 @@ exports[`GOLDEN buildHeaders (default executor providers) > cline → headers (a
     "X-CLIENT-VERSION": "0.8.0",
     "X-CORE-VERSION": "0.8.0",
     "X-IS-MULTIROOT": "false",
-    "X-PLATFORM": "linux",
-    "X-PLATFORM-VERSION": "v24.15.0",
+    "X-PLATFORM": "darwin",
+    "X-PLATFORM-VERSION": "v26.4.0",
     "X-Title": "Cline",
   },
   "nonStream": {
@@ -365,8 +365,8 @@ exports[`GOLDEN buildHeaders (default executor providers) > cline → headers (a
     "X-CLIENT-VERSION": "0.8.0",
     "X-CORE-VERSION": "0.8.0",
     "X-IS-MULTIROOT": "false",
-    "X-PLATFORM": "linux",
-    "X-PLATFORM-VERSION": "v24.15.0",
+    "X-PLATFORM": "darwin",
+    "X-PLATFORM-VERSION": "v26.4.0",
     "X-Title": "Cline",
   },
   "oauth": {
@@ -379,8 +379,8 @@ exports[`GOLDEN buildHeaders (default executor providers) > cline → headers (a
     "X-CLIENT-VERSION": "0.8.0",
     "X-CORE-VERSION": "0.8.0",
     "X-IS-MULTIROOT": "false",
-    "X-PLATFORM": "linux",
-    "X-PLATFORM-VERSION": "v24.15.0",
+    "X-PLATFORM": "darwin",
+    "X-PLATFORM-VERSION": "v26.4.0",
     "X-Title": "Cline",
   },
 }
@@ -841,7 +841,7 @@ exports[`GOLDEN buildHeaders (default executor providers) > kimi-coding → head
     "Anthropic-Version": "2023-06-01",
     "Content-Type": "application/json",
     "X-Msh-Device-Id": "kimi-<TS>",
-    "X-Msh-Device-Model": "linux x64",
+    "X-Msh-Device-Model": "darwin arm64",
     "X-Msh-Platform": "9router",
     "X-Msh-Version": "2.1.2",
     "x-api-key": "<CRED>",
@@ -851,7 +851,7 @@ exports[`GOLDEN buildHeaders (default executor providers) > kimi-coding → head
     "Anthropic-Version": "2023-06-01",
     "Content-Type": "application/json",
     "X-Msh-Device-Id": "kimi-<TS>",
-    "X-Msh-Device-Model": "linux x64",
+    "X-Msh-Device-Model": "darwin arm64",
     "X-Msh-Platform": "9router",
     "X-Msh-Version": "2.1.2",
     "x-api-key": "<CRED>",
@@ -862,7 +862,7 @@ exports[`GOLDEN buildHeaders (default executor providers) > kimi-coding → head
     "Anthropic-Version": "2023-06-01",
     "Content-Type": "application/json",
     "X-Msh-Device-Id": "kimi-<TS>",
-    "X-Msh-Device-Model": "linux x64",
+    "X-Msh-Device-Model": "darwin arm64",
     "X-Msh-Platform": "9router",
     "X-Msh-Version": "2.1.2",
     "x-api-key": "<CRED>",
@@ -871,6 +871,25 @@ exports[`GOLDEN buildHeaders (default executor providers) > kimi-coding → head
 `;
 
 exports[`GOLDEN buildHeaders (default executor providers) > llamagate → headers (apiKey / oauth) 1`] = `
+{
+  "apiKey": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "nonStream": {
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "oauth": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+}
+`;
+
+exports[`GOLDEN buildHeaders (default executor providers) > merlin → headers (apiKey / oauth) 1`] = `
 {
   "apiKey": {
     "Accept": "text/event-stream",
@@ -1734,6 +1753,13 @@ exports[`GOLDEN buildUrl (default executor providers) > llamagate → url (strea
 {
   "nonStream": "https://llamagate.ai/v1/chat/completions",
   "stream": "https://llamagate.ai/v1/chat/completions",
+}
+`;
+
+exports[`GOLDEN buildUrl (default executor providers) > merlin → url (stream + non-stream) 1`] = `
+{
+  "nonStream": "https://www.getmerlin.in/arcane/api/v2/thread/unified",
+  "stream": "https://www.getmerlin.in/arcane/api/v2/thread/unified",
 }
 `;
 
