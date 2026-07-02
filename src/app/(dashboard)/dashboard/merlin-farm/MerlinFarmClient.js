@@ -1,11 +1,21 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Card from "@/shared/components/Card";
 import Button from "@/shared/components/Button";
 import Input from "@/shared/components/Input";
 import Badge from "@/shared/components/Badge";
+import Toggle from "@/shared/components/Toggle";
 import { useNotificationStore } from "@/store/notificationStore";
+
+async function api(action, body) {
+  const res = await fetch("/api/merlin-farm", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action, ...body }),
+  });
+  return res.json();
+}
 
 export default function MerlinFarmClient() {
   const notify = useNotificationStore();
@@ -15,12 +25,12 @@ export default function MerlinFarmClient() {
   const [file, setFile] = useState("");
   const [fbReady, setFbReady] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [farming, setFarming] = useState(false);
-  const [farmDelay, setFarmDelay] = useState(60);
-  const [farmMax, setFarmMax] = useState(0);
+  const [running, setRunning] = useState(false);
   const [farmCount, setFarmCount] = useState(0);
   const [farmFails, setFarmFails] = useState(0);
   const [farmLast, setFarmLast] = useState("");
+  const [farmDelay, setFarmDelay] = useState(60);
+  const [farmMax, setFarmMax] = useState(0);
   const [farmProxy, setFarmProxy] = useState("");
   const [addEmail, setAddEmail] = useState("");
   const [addPass, setAddPass] = useState("");
@@ -30,8 +40,6 @@ export default function MerlinFarmClient() {
   const [addMode, setAddMode] = useState("signup");
   const [proxyText, setProxyText] = useState("");
   const [proxyAddUrl, setProxyAddUrl] = useState("");
-  const farmRef = useRef(null);
-  const stopRef = useRef(false);
 
   const fetchAccounts = useCallback(async () => {
     try {
@@ -42,134 +50,84 @@ export default function MerlinFarmClient() {
       setProxies(data.proxies || []);
       setFile(data.file || "");
       setFbReady(data.firebaseKey);
-    } catch (e) {
-      notify.error("Failed to load accounts");
-    }
+      if (data.loop) {
+        setRunning(data.loop.running);
+        setFarmCount(data.loop.count);
+        setFarmFails(data.loop.fails);
+        setFarmLast(data.loop.last);
+      }
+    } catch (e) { notify.error("Failed to load"); }
     setLoading(false);
   }, [notify]);
 
   useEffect(() => { fetchAccounts(); }, [fetchAccounts]);
 
   useEffect(() => {
-    return () => {
-      stopRef.current = true;
-      if (farmRef.current) clearTimeout(farmRef.current);
-    };
-  }, []);
+    if (!running) return;
+    const i = setInterval(fetchAccounts, 3000);
+    return () => clearInterval(i);
+  }, [running, fetchAccounts]);
 
-  const runFarmOne = useCallback(async () => {
-    try {
-      const body = { action: "farm" };
-      if (farmProxy.trim()) body.proxy = farmProxy.trim();
-      const res = await fetch("/api/merlin-farm", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const data = await res.json();
-      if (data.ok) {
-        setFarmCount((c) => c + 1);
-        setFarmLast(data.email);
-        setFarmFails(0);
-        await fetchAccounts();
-        return true;
-      } else {
-        setFarmFails((f) => f + 1);
-        notify.error(data.error || "Farm failed");
-        return false;
-      }
-    } catch (e) {
-      setFarmFails((f) => f + 1);
-      return false;
-    }
-  }, [farmProxy, fetchAccounts, notify]);
-
-  const startFarming = useCallback(async () => {
+  const startLoop = async () => {
     if (!fbReady) { notify.error("FIREBASE_API_KEY not set"); return; }
-    stopRef.current = false;
-    setFarming(true);
-    setFarmCount(0);
-    setFarmFails(0);
-    setFarmLast("");
-    notify.success("Farming started");
-    const loop = async () => {
-      if (stopRef.current) return;
-      if (farmMax > 0 && farmCount >= farmMax) {
-        setFarming(false);
-        notify.success(`${farmCount} accounts farmed`);
-        return;
-      }
-      await runFarmOne();
-      if (stopRef.current) return;
-      farmRef.current = setTimeout(loop, farmDelay * 1000);
-    };
-    loop();
-  }, [fbReady, farmDelay, farmMax, farmCount, runFarmOne, notify]);
+    const d = await api("loop-start", { delay: farmDelay, max: farmMax });
+    if (d.ok) { notify.success("Farm started (server-side, safe to close browser)"); setRunning(true); setFarmCount(0); setFarmFails(0); setFarmLast(""); }
+    else notify.error(d.error);
+  };
 
-  const stopFarming = useCallback(() => {
-    stopRef.current = true;
-    if (farmRef.current) clearTimeout(farmRef.current);
-    setFarming(false);
-    notify.warning("Farming stopped");
-  }, [notify]);
+  const stopLoop = async () => {
+    const d = await api("loop-stop");
+    if (d.ok) { notify.warning("Farm stopped"); setRunning(false); fetchAccounts(); }
+  };
 
   const handleAddAccount = async () => {
     setAddLoading(true);
     try {
-      const body = { action: "add" };
+      const body = {};
       if (refreshToken) body.refreshToken = refreshToken;
       else if (addEmail && addPass) { body.email = addEmail; body.password = addPass; body.signup = addMode === "signup"; }
-      else { notify.error("Email+password or refreshToken required"); setAddLoading(false); return; }
+      else { notify.error("Required"); setAddLoading(false); return; }
       if (addProxy.trim()) body.proxy = addProxy.trim();
-      const res = await fetch("/api/merlin-farm", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-      const data = await res.json();
-      if (data.ok) { notify.success(`Account added (total: ${data.total})`); setAddEmail(""); setAddPass(""); setAddProxy(""); setRefreshToken(""); await fetchAccounts(); }
-      else notify.error(data.error || "Failed");
+      const d = await api("add", body);
+      if (d.ok) { notify.success(`Added (total: ${d.total})`); setAddEmail(""); setAddPass(""); setAddProxy(""); setRefreshToken(""); fetchAccounts(); }
+      else notify.error(d.error);
     } catch (e) { notify.error("Network error"); }
     setAddLoading(false);
   };
 
   const handleDelete = async (index) => {
     const res = await fetch(`/api/merlin-farm?index=${index}`, { method: "DELETE" });
-    const data = await res.json();
-    if (data.ok) { notify.success(`Removed`); await fetchAccounts(); }
-    else notify.error(data.error || "Failed");
+    const d = await res.json();
+    if (d.ok) { notify.success("Removed"); fetchAccounts(); }
+    else notify.error(d.error);
   };
 
   const handleAddProxy = async () => {
     if (!proxyAddUrl.trim()) return;
-    const res = await fetch("/api/merlin-farm", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "add-proxy", proxyUrl: proxyAddUrl.trim() }),
-    });
-    const data = await res.json();
-    if (data.ok) { setProxyAddUrl(""); await fetchAccounts(); notify.success(`Proxy added (${data.total} total)`); }
-    else notify.error(data.error || "Failed");
+    const d = await api("add-proxy", { proxyUrl: proxyAddUrl.trim() });
+    if (d.ok) { setProxyAddUrl(""); fetchAccounts(); }
+    else notify.error(d.error);
   };
 
   const handleImportProxies = async () => {
     if (!proxyText.trim()) return;
-    const res = await fetch("/api/merlin-farm", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "import-proxies", text: proxyText }),
-    });
-    const data = await res.json();
-    if (data.ok) { setProxyText(""); await fetchAccounts(); notify.success(`${data.added} proxies added (${data.total} total)`); }
-    else notify.error(data.error || "Failed");
+    const d = await api("import-proxies", { text: proxyText });
+    if (d.ok) { setProxyText(""); fetchAccounts(); }
+    else notify.error(d.error);
   };
 
   const handleDeleteProxy = async (index) => {
-    const res = await fetch(`/api/merlin-farm?type=proxies&index=${index}`, { method: "DELETE" });
-    const data = await res.json();
-    if (data.ok) { await fetchAccounts(); notify.success("Proxy removed"); }
+    await fetch(`/api/merlin-farm?type=proxies&index=${index}`, { method: "DELETE" });
+    fetchAccounts();
   };
 
-  const handleExport = () => { window.open("/api/merlin-farm?type=export", "_blank"); };
-  const handleClearCreds = async () => {
-    await fetch("/api/merlin-farm?type=credentials&index=0", { method: "DELETE" });
-    await fetchAccounts();
-    notify.success("Credential list cleared");
+  const handleClearProxies = async () => {
+    for (let i = proxies.length - 1; i >= 0; i--) await fetch(`/api/merlin-farm?type=proxies&index=${i}`, { method: "DELETE" });
+    fetchAccounts();
+    notify.success("All proxies cleared");
   };
+
+  const handleExport = () => window.open("/api/merlin-farm?type=export", "_blank");
 
   if (loading) return null;
 
@@ -177,45 +135,36 @@ export default function MerlinFarmClient() {
     <div className="space-y-6 p-6">
       <h1 className="text-xl font-semibold">Merlin Farm</h1>
 
-      {/* ── Auto Farm ── */}
-      <Card title="Auto Farm" icon="agriculture" padding="md">
+      <Card title="Auto Farm (Server-Side)" icon="agriculture" padding="md" subtitle="Runs on server — safe to close browser">
         <div className="space-y-4">
           <div className="flex items-center gap-4 flex-wrap">
-            <Input label="Delay (s)" type="number" value={String(farmDelay)} onChange={(e) => setFarmDelay(parseInt(e.target.value) || 60)} style={{ width: 110 }} />
-            <Input label="Max (0=∞)" type="number" value={String(farmMax)} onChange={(e) => setFarmMax(parseInt(e.target.value) || 0)} style={{ width: 110 }} />
-            <Input label="Fixed proxy (optional)" value={farmProxy} onChange={(e) => setFarmProxy(e.target.value)} placeholder="http://user:pass@ip:port — empty = use pool" style={{ width: 300 }} />
+            <Input label="Delay (s)" type="number" value={String(farmDelay)} onChange={(e) => setFarmDelay(parseInt(e.target.value) || 60)} style={{ width: 110 }} disabled={running} />
+            <Input label="Max (0=∞)" type="number" value={String(farmMax)} onChange={(e) => setFarmMax(parseInt(e.target.value) || 0)} style={{ width: 110 }} disabled={running} />
           </div>
           <div className="flex items-center gap-3">
-            {!farming ? (
-              <Button variant="success" icon="play_arrow" onClick={startFarming} disabled={!fbReady}>Start Farming</Button>
+            {running ? (
+              <Button variant="danger" icon="stop" onClick={stopLoop}>Stop</Button>
             ) : (
-              <Button variant="danger" icon="stop" onClick={stopFarming}>Stop</Button>
+              <Button variant="success" icon="play_arrow" onClick={startLoop} disabled={!fbReady}>Start</Button>
             )}
-            {farming && (
-              <div className="flex items-center gap-3">
-                <Badge variant="success" dot>Running</Badge>
-                <span className="text-sm text-fg-muted">+{farmCount} ok{farmFails > 0 ? ` | ${farmFails} fails` : ""}{farmLast ? ` | last: ${farmLast}` : ""}</span>
-              </div>
+            {running && <Badge variant="success" dot>Running on server</Badge>}
+            {running && (
+              <span className="text-sm text-fg-muted">+{farmCount} ok{farmFails > 0 ? ` | ${farmFails} fails` : ""}{farmLast ? ` | last: ${farmLast}` : ""}</span>
             )}
             {!fbReady && <Badge variant="error">FIREBASE_API_KEY not set</Badge>}
           </div>
         </div>
       </Card>
 
-      {/* ── Proxy Pool ── */}
       <Card title={`Proxy Pool (${proxies.length})`} icon="lan" padding="md"
-        action={proxies.length > 0 ? <Button variant="ghost" size="sm" icon="delete" onClick={async () => { for (let i = proxies.length-1; i>=0; i--) await fetch(`/api/merlin-farm?type=proxies&index=${i}`, { method: "DELETE" }); await fetchAccounts(); notify.success("All proxies cleared"); }}>Clear All</Button> : null}>
+        action={proxies.length > 0 ? <Button variant="ghost" size="sm" icon="delete" onClick={handleClearProxies}>Clear All</Button> : null}>
         <div className="space-y-3">
           <div className="flex items-center gap-2">
             <Input value={proxyAddUrl} onChange={(e) => setProxyAddUrl(e.target.value)} placeholder="http://user:pass@ip:port" style={{ flex: 1 }} />
             <Button variant="primary" size="sm" icon="add" onClick={handleAddProxy}>Add</Button>
           </div>
-          <textarea
-            className="w-full h-20 rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm font-mono text-fg placeholder:text-fg-muted resize-y"
-            placeholder="Paste multiple proxies (one per line):&#10;http://user:pass@ip1:port&#10;http://user:pass@ip2:port"
-            value={proxyText}
-            onChange={(e) => setProxyText(e.target.value)}
-          />
+          <textarea className="w-full h-20 rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm font-mono text-fg placeholder:text-fg-muted resize-y"
+            placeholder="Paste multiple proxies (one per line)" value={proxyText} onChange={(e) => setProxyText(e.target.value)} />
           <div className="flex gap-2">
             <Button variant="outline" size="sm" icon="upload" onClick={handleImportProxies} disabled={!proxyText.trim()}>Import</Button>
           </div>
@@ -223,27 +172,18 @@ export default function MerlinFarmClient() {
             <div className="mt-2 space-y-1 max-h-40 overflow-y-auto">
               {proxies.map((p, i) => {
                 const short = p.replace(/https?:\/\/([^@]*@)?/, "").split(":")[0];
-                return (
-                  <div key={i} className="flex items-center gap-2 text-xs font-mono">
-                    <span className="text-fg-muted w-6">{i + 1}.</span>
-                    <span className="flex-1 truncate" title={p}>{short}</span>
-                    <Button variant="ghost" size="sm" icon="delete" onClick={() => handleDeleteProxy(i)} />
-                  </div>
-                );
+                return <div key={i} className="flex items-center gap-2 text-xs font-mono"><span className="text-fg-muted w-6">{i + 1}.</span><span className="flex-1 truncate" title={p}>{short}</span><Button variant="ghost" size="sm" icon="delete" onClick={() => handleDeleteProxy(i)} /></div>;
               })}
             </div>
           )}
         </div>
       </Card>
 
-      {/* ── Add Account ── */}
       <Card title="Add Account" icon="person_add" padding="md">
         <div className="space-y-4">
           <div className="flex gap-2 mb-2">
-            {["signup","login","refresh"].map((m) => (
-              <Button key={m} variant={addMode === m ? "primary" : "outline"} size="sm" onClick={() => setAddMode(m)}>
-                {m === "signup" ? "Signup" : m === "login" ? "Login" : "Refresh Token"}
-              </Button>
+            {["signup", "login", "refresh"].map((m) => (
+              <Button key={m} variant={addMode === m ? "primary" : "outline"} size="sm" onClick={() => setAddMode(m)}>{m === "signup" ? "Signup" : m === "login" ? "Login" : "Refresh Token"}</Button>
             ))}
           </div>
           {addMode !== "refresh" ? (
@@ -259,34 +199,28 @@ export default function MerlinFarmClient() {
         </div>
       </Card>
 
-      {/* ── Accounts ── */}
       <Card title={`Accounts (${accounts.length})`} icon="list" padding="none"
-        action={creds.length > 0 ? (
-          <div className="flex gap-1">
-            <Button variant="ghost" size="sm" icon="download" onClick={handleExport}>CSV</Button>
-            <Button variant="ghost" size="sm" icon="delete" onClick={handleClearCreds}>Clear</Button>
-          </div>
-        ) : null}>
+        action={creds.length > 0 ? <div className="flex gap-1"><Button variant="ghost" size="sm" icon="download" onClick={handleExport}>CSV</Button></div> : null}>
         {accounts.length === 0 ? (
-          <div className="py-6 text-center text-sm text-fg-muted">No accounts yet. Start farming or add manually.</div>
+          <div className="py-6 text-center text-sm text-fg-muted">No accounts yet.</div>
         ) : (
           <div className="divide-y divide-border">
-              {[...accounts].reverse().slice(0, 50).map((acc) => {
-                const cred = creds.find((c) => c.chatId === acc.chatId);
-                const email = cred?.email || "";
-                const key = cred?.key || "";
-                const host = acc.proxy ? acc.proxy.replace(/https?:\/\/([^@]*@)?/, "").split(":")[0] : "";
-                return (
-                  <Card.Row key={acc.index}>
-                    <div className="flex flex-1 items-center gap-3 min-w-0">
-                      <Badge variant={acc.hasRefresh ? "success" : "warning"} dot size="sm" />
-                      <span className="text-sm truncate">{email || acc.chatId?.slice(0, 12) + "..."}</span>
-                      {key && <span className="text-xs text-fg-muted font-mono">{key.slice(0, 12)}...</span>}
-                      {host && <span className="text-xs text-fg-muted">{host}</span>}
-                    </div>
-                    <Button variant="ghost" size="sm" icon="delete" onClick={() => handleDelete(acc.index)} />
-                  </Card.Row>
-                );
+            {[...accounts].reverse().slice(0, 50).map((acc) => {
+              const cred = creds.find((c) => c.chatId === acc.chatId);
+              const email = cred?.email || "";
+              const key = cred?.key || "";
+              const host = acc.proxy ? acc.proxy.replace(/https?:\/\/([^@]*@)?/, "").split(":")[0] : "";
+              return (
+                <Card.Row key={acc.index}>
+                  <div className="flex flex-1 items-center gap-3 min-w-0">
+                    <Badge variant={acc.hasRefresh ? "success" : "warning"} dot size="sm" />
+                    <span className="text-sm truncate">{email || acc.chatId?.slice(0, 12) + "..."}</span>
+                    {key && <span className="text-xs text-fg-muted font-mono">{key.slice(0, 12)}...</span>}
+                    {host && <span className="text-xs text-fg-muted">{host}</span>}
+                  </div>
+                  <Button variant="ghost" size="sm" icon="delete" onClick={() => handleDelete(acc.index)} />
+                </Card.Row>
+              );
             })}
           </div>
         )}

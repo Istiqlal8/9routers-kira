@@ -8,8 +8,17 @@ const ACCOUNTS_FILE =
   process.env.MERLIN_ACCOUNTS_FILE || join(DATA_DIR, "merlin-accounts.json");
 const PROXIES_FILE = join(DATA_DIR, "merlin-proxies.json");
 const CRED_FILE = join(DATA_DIR, "merlin-credentials.json");
+const FARM_STATE_FILE = join(DATA_DIR, "merlin-farm-state.json");
 const FB_KEY = process.env.FIREBASE_API_KEY || "";
 const FB_IDENTITY = "https://identitytoolkit.googleapis.com/v1/accounts";
+
+let farmTimer = null;
+let farmState = { running: false, count: 0, fails: 0, last: "", delay: 60, max: 0, consecutiveFails: 0 };
+try { farmState = { ...farmState, ...JSON.parse(readFileSync(FARM_STATE_FILE, "utf8")) }; farmState.running = false; } catch {}
+
+function saveFarmState() {
+  saveFile(FARM_STATE_FILE, { running: farmState.running, count: farmState.count, fails: farmState.fails, last: farmState.last, delay: farmState.delay, max: farmState.max, consecutiveFails: farmState.consecutiveFails });
+}
 
 function loadFile(path) {
   try {
@@ -112,6 +121,7 @@ export async function GET(request) {
       proxies: loadProxies(),
       file: ACCOUNTS_FILE,
       firebaseKey: !!FB_KEY,
+      loop: { running: farmState.running, count: farmState.count, fails: farmState.fails, last: farmState.last, delay: farmState.delay, max: farmState.max },
     });
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: 500 });
@@ -182,6 +192,60 @@ export async function POST(request) {
       config.emailPrefix = body.prefix || "";
       saveFile(file, config);
       return NextResponse.json({ ok: true });
+    }
+
+    if (action === "loop-start") {
+      if (!FB_KEY) return NextResponse.json({ error: "FIREBASE_API_KEY not set" }, { status: 400 });
+      if (farmState.running) return NextResponse.json({ ok: true, ...farmState });
+      farmState.delay = body.delay || 60;
+      farmState.max = body.max || 0;
+      farmState.count = 0;
+      farmState.fails = 0;
+      farmState.last = "";
+      farmState.consecutiveFails = 0;
+      farmState.running = true;
+      saveFarmState();
+      const tick = async () => {
+        if (!farmState.running) return;
+        if (farmState.max > 0 && farmState.count >= farmState.max) { farmState.running = false; saveFarmState(); return; }
+        try {
+          const newEmail = genEmail();
+          const newPass = genPassword();
+          let proxyToUse = "";
+          const proxies = loadProxies();
+          if (proxies.length > 0) proxyToUse = proxies[Math.floor(Math.random() * proxies.length)];
+          const rt = await firebaseSignup(newEmail, newPass);
+          const key = [...Array(16)].map(() => Math.floor(Math.random() * 16).toString(16)).join("");
+          const account = { refreshToken: rt, chatId: randomUUID(), proxy: proxyToUse, key };
+          saveAccounts([...loadAccounts(), account]);
+          const creds = loadCreds();
+          creds.push({ email: newEmail, password: newPass, chatId: account.chatId, proxy: proxyToUse, key });
+          saveCreds(creds);
+          farmState.count++;
+          farmState.last = newEmail;
+          farmState.consecutiveFails = 0;
+          saveFarmState();
+        } catch (e) {
+          farmState.fails++;
+          farmState.consecutiveFails++;
+          saveFarmState();
+          if (farmState.consecutiveFails >= 5) { farmState.running = false; saveFarmState(); return; }
+        }
+        farmTimer = setTimeout(tick, farmState.delay * 1000);
+      };
+      farmTimer = setTimeout(tick, 100);
+      return NextResponse.json({ ok: true, ...farmState });
+    }
+
+    if (action === "loop-stop") {
+      farmState.running = false;
+      if (farmTimer) { clearTimeout(farmTimer); farmTimer = null; }
+      saveFarmState();
+      return NextResponse.json({ ok: true, ...farmState });
+    }
+
+    if (action === "loop-status") {
+      return NextResponse.json({ running: farmState.running, count: farmState.count, fails: farmState.fails, last: farmState.last, delay: farmState.delay, max: farmState.max, consecutiveFails: farmState.consecutiveFails });
     }
 
     return NextResponse.json({ error: "unknown action" }, { status: 400 });
