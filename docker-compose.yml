@@ -1,6 +1,9 @@
 services:
   vansrouter:
-    image: ghcr.io/Vanszs/VansRouter:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: vansrouter:latest
     container_name: vansrouter
     restart: always
     ports:
