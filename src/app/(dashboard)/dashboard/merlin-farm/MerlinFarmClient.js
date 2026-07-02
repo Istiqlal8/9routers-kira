@@ -50,6 +50,13 @@ export default function MerlinFarmClient() {
 
   useEffect(() => { fetchAccounts(); }, [fetchAccounts]);
 
+  useEffect(() => {
+    return () => {
+      stopRef.current = true;
+      if (farmRef.current) clearTimeout(farmRef.current);
+    };
+  }, []);
+
   const runFarmOne = useCallback(async () => {
     try {
       const body = { action: "farm" };
