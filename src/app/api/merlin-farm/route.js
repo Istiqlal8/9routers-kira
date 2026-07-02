@@ -86,9 +86,9 @@ export async function GET(request) {
 
     if (what === "export") {
       const creds = loadCreds();
-      const lines = ["email,password,chatId,proxy"];
+      const lines = ["email,password,chatId,key,proxy"];
       for (const c of creds) {
-        lines.push([c.email || "", c.password || "", c.chatId || "", c.proxy || ""].join(","));
+        lines.push([c.email || "", c.password || "", c.chatId || "", c.key || "", c.proxy || ""].join(","));
       }
       return new NextResponse(lines.join("\n"), {
         status: 200,
@@ -133,28 +133,30 @@ export async function POST(request) {
         if (proxies.length > 0) proxyToUse = proxies[Math.floor(Math.random() * proxies.length)];
       }
       const rt = await firebaseSignup(newEmail, newPass);
-      const account = { refreshToken: rt, chatId: randomUUID(), proxy: proxyToUse };
+      const key = [...Array(16)].map(() => Math.floor(Math.random() * 16).toString(16)).join("");
+      const account = { refreshToken: rt, chatId: randomUUID(), proxy: proxyToUse, key };
       const accounts = loadAccounts();
       accounts.push(account);
       saveAccounts(accounts);
       const creds = loadCreds();
-      creds.push({ email: newEmail, password: newPass, chatId: account.chatId, proxy: proxyToUse });
+      creds.push({ email: newEmail, password: newPass, chatId: account.chatId, proxy: proxyToUse, key });
       saveCreds(creds);
-      return NextResponse.json({ ok: true, email: newEmail, password: newPass, proxy: proxyToUse, total: accounts.length }, { status: 201 });
+      return NextResponse.json({ ok: true, email: newEmail, password: newPass, proxy: proxyToUse, key, total: accounts.length }, { status: 201 });
     }
 
     if (action === "add") {
       if (!FB_KEY) return NextResponse.json({ error: "FIREBASE_API_KEY not set" }, { status: 400 });
       const rt = await getRefreshToken({ email, password, refreshToken, signup: body.signup });
       const proxyToUse = proxy || "";
-      const account = { refreshToken: rt, chatId: randomUUID(), proxy: proxyToUse };
+      const key = [...Array(16)].map(() => Math.floor(Math.random() * 16).toString(16)).join("");
+      const account = { refreshToken: rt, chatId: randomUUID(), proxy: proxyToUse, key };
       const accounts = loadAccounts();
       accounts.push(account);
       saveAccounts(accounts);
       const creds = loadCreds();
-      creds.push({ email: email || "(refresh)", password: password || "", chatId: account.chatId, proxy: proxyToUse });
+      creds.push({ email: email || "(refresh)", password: password || "", chatId: account.chatId, proxy: proxyToUse, key });
       saveCreds(creds);
-      return NextResponse.json({ ok: true, total: accounts.length }, { status: 201 });
+      return NextResponse.json({ ok: true, key, total: accounts.length }, { status: 201 });
     }
 
     if (action === "add-proxy") {

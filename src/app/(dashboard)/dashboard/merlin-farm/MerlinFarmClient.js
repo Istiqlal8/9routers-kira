@@ -271,20 +271,22 @@ export default function MerlinFarmClient() {
           <div className="py-6 text-center text-sm text-fg-muted">No accounts yet. Start farming or add manually.</div>
         ) : (
           <div className="divide-y divide-border">
-            {[...accounts].reverse().slice(0, 50).map((acc) => {
-              const cred = creds.find((c) => c.chatId === acc.chatId);
-              const email = cred?.email || "";
-              const host = acc.proxy ? acc.proxy.replace(/https?:\/\/([^@]*@)?/, "").split(":")[0] : "";
-              return (
-                <Card.Row key={acc.index}>
-                  <div className="flex flex-1 items-center gap-3 min-w-0">
-                    <Badge variant={acc.hasRefresh ? "success" : "warning"} dot size="sm" />
-                    <span className="text-sm truncate">{email || acc.chatId?.slice(0, 12) + "..."}</span>
-                    {host && <span className="text-xs text-fg-muted">{host}</span>}
-                  </div>
-                  <Button variant="ghost" size="sm" icon="delete" onClick={() => handleDelete(acc.index)} />
-                </Card.Row>
-              );
+              {[...accounts].reverse().slice(0, 50).map((acc) => {
+                const cred = creds.find((c) => c.chatId === acc.chatId);
+                const email = cred?.email || "";
+                const key = cred?.key || "";
+                const host = acc.proxy ? acc.proxy.replace(/https?:\/\/([^@]*@)?/, "").split(":")[0] : "";
+                return (
+                  <Card.Row key={acc.index}>
+                    <div className="flex flex-1 items-center gap-3 min-w-0">
+                      <Badge variant={acc.hasRefresh ? "success" : "warning"} dot size="sm" />
+                      <span className="text-sm truncate">{email || acc.chatId?.slice(0, 12) + "..."}</span>
+                      {key && <span className="text-xs text-fg-muted font-mono">{key.slice(0, 12)}...</span>}
+                      {host && <span className="text-xs text-fg-muted">{host}</span>}
+                    </div>
+                    <Button variant="ghost" size="sm" icon="delete" onClick={() => handleDelete(acc.index)} />
+                  </Card.Row>
+                );
             })}
           </div>
         )}
