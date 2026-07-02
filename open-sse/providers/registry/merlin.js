@@ -28,5 +28,8 @@ export default {
     { id: "gpt-4o", name: "GPT-4o (via Merlin)" },
     { id: "claude-3-5-sonnet", name: "Claude 3.5 Sonnet (via Merlin)" },
     { id: "gemini-flash", name: "Gemini 2.5 Flash (via Merlin)" },
+    { id: "deepseek-v3", name: "DeepSeek V3 (via Merlin)" },
+    { id: "deepseek-r1", name: "DeepSeek R1 (via Merlin)" },
+    { id: "glm-4", name: "GLM-4 (via Merlin)" },
   ],
 };
